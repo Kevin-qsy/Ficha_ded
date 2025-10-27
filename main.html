@@ -1,0 +1,598 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Ficha online</title>
+  <link rel="stylesheet" href="style.css"/>
+  <script src="main.js" defer></script>
+  <link rel="manifest" href="manifest.webmanifest">
+ <meta name="theme-color" content="#1f6feb">
+
+</head>
+
+<body>
+  <!-- ========== HOME: Minhas Fichas ========== -->
+  <section id="home" class="secao home" aria-labelledby="home-title">
+    <div class="home-head">
+      <h1 id="home-title">Minhas Fichas</h1>
+      <div class="home-actions">
+        <input type="file" id="home-import-file" accept="application/json" hidden>
+        <button id="home-import-btn" class="btn">Importar</button>
+        <button id="home-create-btn" class="btn primary">+ Nova ficha</button>
+      </div>
+    </div>
+
+    <!-- Estado vazio -->
+    <div id="home-empty" class="home-empty">
+      <p>Você ainda não tem fichas salvas.</p>
+      <button id="home-empty-create" class="btn primary">Criar nova ficha</button>
+    </div>
+
+    <!-- Grid de fichas -->
+    <div id="home-list" class="home-grid" aria-live="polite"></div>
+
+    <!-- Template de card de ficha (preenchido via JS) -->
+    <template id="tpl-card-ficha">
+      <article class="card-ficha" data-id="">
+        <header class="card-ficha_hd">
+          <h3 class="card-ficha_nome">Sem nome</h3>
+          <div class="card-ficha_meta">Classe • Nível 1</div>
+          <div class="card-ficha_time">Atualizada em --/-- --:--</div>
+        </header>
+        <div class="card-ficha_actions">
+          <button class="btn" data-action="load">Carregar</button>
+          <button class="btn" data-action="rename">Renomear</button>
+          <button class="btn danger" data-action="delete">Excluir</button>
+          <button class="btn ghost" data-action="export">Exportar</button>
+        </div>
+      </article>
+    </template>
+  </section>
+  <!-- ========== /HOME ========== -->
+
+  <!-- ========== ONBOARDING (tela inicial de criação) ========== -->
+  <div id="ob" class="ob hidden" role="dialog" aria-modal="true" aria-labelledby="ob-title">
+    <div class="ob-card">
+      <h2 id="ob-title">Nova Ficha</h2>
+      <p class="ob-sub">Escolha sua classe:</p>
+
+      <div class="ob-classes">
+        <button type="button" class="ob-class" data-class="artifice">Artífice</button>
+        <button type="button" class="ob-class" data-class="barbaro">Bárbaro</button>
+        <button type="button" class="ob-class" data-class="bardo">Bardo</button>
+        <button type="button" class="ob-class" data-class="clerigo">Clérigo</button>
+        <button type="button" class="ob-class" data-class="druida">Druida</button>
+        <button type="button" class="ob-class" data-class="guerreiro">Guerreiro</button>
+        <button type="button" class="ob-class" data-class="monge">Monge</button>
+        <button type="button" class="ob-class" data-class="paladino">Paladino</button>
+        <button type="button" class="ob-class" data-class="patrulheiro">Patrulheiro</button>
+        <button type="button" class="ob-class" data-class="ladino">Ladino</button>
+        <button type="button" class="ob-class" data-class="feiticeiro">Feiticeiro</button>
+        <button type="button" class="ob-class" data-class="bruxo">Bruxo</button>
+        <button type="button" class="ob-class" data-class="mago">Mago</button>
+      </div>
+
+      <div class="ob-preview" id="ob-preview">Selecione uma classe para ver Dado de Vida e TRs.</div>
+
+      <form id="ob-form" novalidate>
+        <div class="ob-grid">
+          <label>Nome do Personagem
+            <input id="ob-nome" type="text" />
+          </label>
+
+          <label>Classe
+            <input id="ob-classe" type="text" readonly placeholder="Escolha acima">
+          </label>
+
+          <label>Nível*
+            <input id="ob-nivel" type="number" min="1" required value="1" inputmode="numeric" pattern="[0-9]*" step="1">
+          </label>
+
+          <label>Antecedente
+            <input id="ob-antecedente" type="text">
+          </label>
+
+          <label>Tendência
+            <input id="ob-tendencia" type="text">
+          </label>
+
+          <label>Nome do Jogador
+            <input id="ob-jogador" type="text">
+          </label>
+
+          <label>Pontos de Experiência
+            <input id="ob-xp" type="number" min="0" value="0" inputmode="numeric" pattern="[0-9]*" step="1">
+          </label>
+        </div>
+
+        <div class="ob-actions">
+          <button id="ob-use-saved" type="button" class="btn ghost hidden">Usar dados salvos</button>
+          <span class="flex"></span>
+          <button id="ob-reset" type="button" class="btn danger">Reiniciar do zero</button>
+          <button id="ob-submit" type="submit" class="btn primary">Começar</button>
+        </div>
+
+        <div class="ob-errors" id="ob-errors" aria-live="polite"></div>
+      </form>
+    </div>
+  </div>
+  <!-- ========== /ONBOARDING ========== -->
+
+  <!-- ========== FICHA (conteúdo completo) ========== -->
+  <main id="ficha" aria-labelledby="ficha-title" hidden>
+    <h1 id="ficha-title">Ficha de Personagem</h1>
+
+    <!-- CABEÇALHO -->
+    <section class="secao cabeçalho" id="info-geral" aria-labelledby="cabecalho-titulo">
+      <h2 id="cabecalho-titulo" class="sr-only">Cabeçalho</h2>
+
+      <!-- Título: Nome do Personagem -->
+      <div class="nome-wrap campo">
+        <label>Nome do Personagem
+          <input type="text" data-field="nome" class="nome-titulo" placeholder="Nome do personagem">
+        </label>
+      </div>
+
+      <!-- Linha 1: Classe, Nível, Raça -->
+      <div class="linha-grid">
+        <div class="campo">
+          <label>Classe
+            <input type="text" data-field="classe" placeholder="...">
+          </label>
+        </div>
+        <div class="campo">
+          <label>Nível
+            <input type="number" data-field="nivel" min="1" value="1" inputmode="numeric" pattern="[0-9]*" step="1">
+          </label>
+        </div>
+        <div class="campo">
+          <label>Raça
+            <input type="text" data-field="raca" placeholder="...">
+          </label>
+        </div>
+      </div>
+
+      <!-- Linha 2: Antecedente, Tendência, Nome do Jogador -->
+      <div class="linha-grid">
+        <div class="campo">
+          <label>Antecedente
+            <input type="text" data-field="antecedente" placeholder="...">
+          </label>
+        </div>
+        <div class="campo">
+          <label>Tendência
+            <input type="text" data-field="tendencia" placeholder="...">
+          </label>
+        </div>
+        <div class="campo">
+          <label>Nome do Jogador
+            <input type="text" data-field="jogador" placeholder="...">
+          </label>
+        </div>
+      </div>
+    </section>
+    <!-- FIM CABEÇALHO -->
+
+    <!-- TRIO: CA / Iniciativa / Deslocamento -->
+    <section class="secao trio-info">
+      <div class="linha-grid trio-ca-inc-mov">
+        <div class="campo trio-item">
+          <label>Classe de Armadura (CA)
+            <input type="number" class="ca" min="0" placeholder="0" inputmode="numeric" pattern="[0-9]*" step="1">
+          </label>
+        </div>
+
+        <div class="campo trio-item">
+          <label>Iniciativa
+            <!-- type="text" para mostrar +/− -->
+            <input type="text" class="inc" readonly placeholder="+0">
+          </label>
+        </div>
+
+        <div class="campo trio-item">
+          <label>Deslocamento (m)
+            <input type="number" class="mov" min="0" placeholder="9" inputmode="numeric" pattern="[0-9]*" step="1">
+          </label>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===== BLOCO: Atributos + (Inspiração/Prof) + TRs + Perícias ===== -->
+    <section class="secao stats-layout" aria-labelledby="stats-title">
+      <h2 id="stats-title" class="sr-only">Atributos, Testes de Resistência e Perícias</h2>
+
+      <div class="stats-grid">
+        <!-- Coluna Esquerda: Atributos (com Point Buy em cima) -->
+        <div class="stats-left">
+          <section class="atributos" aria-labelledby="atributos-titulo">
+            <h3 id="atributos-titulo" class="sr-only">Atributos</h3>
+
+            <div class="attr-actions">
+              <button id="attr-pointbuy-btn" class="btn">Point Buy</button>
+            </div>
+
+            <div class="atributo">
+              <label>Força</label>
+              <input type="number" class="valor" min="1" max="30" value="10" inputmode="numeric" pattern="[0-9]*" step="1">
+              <input type="text" class="mod" readonly>
+            </div>
+            <div class="atributo">
+              <label>Destreza</label>
+              <input type="number" class="valor" min="1" max="30" value="10" inputmode="numeric" pattern="[0-9]*" step="1">
+              <input type="text" class="mod" readonly>
+            </div>
+            <div class="atributo">
+              <label>Constituição</label>
+              <input type="number" class="valor" min="1" max="30" value="10" inputmode="numeric" pattern="[0-9]*" step="1">
+              <input type="text" class="mod" readonly>
+            </div>
+            <div class="atributo">
+              <label>Inteligência</label>
+              <input type="number" class="valor" min="1" max="30" value="10" inputmode="numeric" pattern="[0-9]*" step="1">
+              <input type="text" class="mod" readonly>
+            </div>
+            <div class="atributo">
+              <label>Sabedoria</label>
+              <input type="number" class="valor" min="1" max="30" value="10" inputmode="numeric" pattern="[0-9]*" step="1">
+              <input type="text" class="mod" readonly>
+            </div>
+            <div class="atributo">
+              <label>Carisma</label>
+              <input type="number" class="valor" min="1" max="30" value="10" inputmode="numeric" pattern="[0-9]*" step="1">
+              <input type="text" class="mod" readonly>
+            </div>
+          </section>
+        </div>
+
+        <!-- Coluna Direita -->
+        <div class="stats-right">
+          <!-- TOPO: Inspiração + Bônus de Proficiência -->
+          <section class="top-boxes">
+            <div class="small-box insp">
+              <label>
+                <span>Inspiração</span>
+                <input type="checkbox" id="inspiracao">
+              </label>
+            </div>
+
+            <div class="small-box prof-box" id="prof" aria-labelledby="prof-titulo">
+              <label>
+                <span id="prof-titulo">Bônus de Proficiência</span>
+                <input type="number" class="valor" value="2" min="2" max="6" inputmode="numeric" pattern="[0-9]*" step="1">
+              </label>
+            </div>
+          </section>
+
+          <!-- TESTES DE RESISTÊNCIA -->
+          <section class="testes-resistencia" aria-labelledby="trs-titulo">
+            <h3 id="trs-titulo" class="block-title">TESTES DE RESISTÊNCIA</h3>
+            <div class="teste">
+              <label><input type="checkbox" class="prof"> Força</label>
+              <input type="text" class="valor" readonly>
+            </div>
+            <div class="teste">
+              <label><input type="checkbox" class="prof"> Destreza</label>
+              <input type="text" class="valor" readonly>
+            </div>
+            <div class="teste">
+              <label><input type="checkbox" class="prof"> Constituição</label>
+              <input type="text" class="valor" readonly>
+            </div>
+            <div class="teste">
+              <label><input type="checkbox" class="prof"> Inteligência</label>
+              <input type="text" class="valor" readonly>
+            </div>
+            <div class="teste">
+              <label><input type="checkbox" class="prof"> Sabedoria</label>
+              <input type="text" class="valor" readonly>
+            </div>
+            <div class="teste">
+              <label><input type="checkbox" class="prof"> Carisma</label>
+              <input type="text" class="valor" readonly>
+            </div>
+          </section>
+
+          <!-- PERÍCIAS -->
+          <section class="pericias" aria-labelledby="pericias-titulo">
+            <h3 id="pericias-titulo" class="block-title">PERÍCIAS</h3>
+
+            <div class="pericia" data-attr="des">
+              <label><input type="checkbox" class="prof"> Acrobacia (Des)</label>
+              <input type="text" class="valor" readonly>
+            </div>
+            <div class="pericia" data-attr="int">
+              <label><input type="checkbox" class="prof"> Arcanismo (Int)</label>
+              <input type="text" class="valor" readonly>
+            </div>
+            <div class="pericia" data-attr="for">
+              <label><input type="checkbox" class="prof"> Atletismo (For)</label>
+              <input type="text" class="valor" readonly>
+            </div>
+            <div class="pericia" data-attr="car">
+              <label><input type="checkbox" class="prof"> Atuação (Car)</label>
+              <input type="text" class="valor" readonly>
+            </div>
+            <div class="pericia" data-attr="car">
+              <label><input type="checkbox" class="prof"> Blefar (Car)</label>
+              <input type="text" class="valor" readonly>
+            </div>
+            <div class="pericia" data-attr="des">
+              <label><input type="checkbox" class="prof"> Furtividade (Des)</label>
+              <input type="text" class="valor" readonly>
+            </div>
+            <div class="pericia" data-attr="int">
+              <label><input type="checkbox" class="prof"> História (Int)</label>
+              <input type="text" class="valor" readonly>
+            </div>
+            <div class="pericia" data-attr="car">
+              <label><input type="checkbox" class="prof"> Intimidação (Car)</label>
+              <input type="text" class="valor" readonly>
+            </div>
+            <div class="pericia" data-attr="sab" data-skill="percepcao">
+              <label><input type="checkbox" class="prof"> Percepção (Sab)</label>
+              <input type="text" class="valor" readonly>
+            </div>
+            <div class="pericia" data-attr="sab">
+              <label><input type="checkbox" class="prof"> Intuição (Sab)</label>
+              <input type="text" class="valor" readonly>
+            </div>
+            <div class="pericia" data-attr="int">
+              <label><input type="checkbox" class="prof"> Investigação (Int)</label>
+              <input type="text" class="valor" readonly>
+            </div>
+            <div class="pericia" data-attr="sab">
+              <label><input type="checkbox" class="prof"> Lidar com Animais (Sab)</label>
+              <input type="text" class="valor" readonly>
+            </div>
+            <div class="pericia" data-attr="sab">
+              <label><input type="checkbox" class="prof"> Medicina (Sab)</label>
+              <input type="text" class="valor" readonly>
+            </div>
+            <div class="pericia" data-attr="int">
+              <label><input type="checkbox" class="prof"> Natureza (Int)</label>
+              <input type="text" class="valor" readonly>
+            </div>
+            <div class="pericia" data-attr="car">
+              <label><input type="checkbox" class="prof"> Persuasão (Car)</label>
+              <input type="text" class="valor" readonly>
+            </div>
+            <div class="pericia" data-attr="des">
+              <label><input type="checkbox" class="prof"> Prestidigitação (Des)</label>
+              <input type="text" class="valor" readonly>
+            </div>
+            <div class="pericia" data-attr="int">
+              <label><input type="checkbox" class="prof"> Religião (Int)</label>
+              <input type="text" class="valor" readonly>
+            </div>
+            <div class="pericia" data-attr="sab">
+              <label><input type="checkbox" class="prof"> Sobrevivência (Sab)</label>
+              <input type="text" class="valor" readonly>
+            </div>
+          </section>
+        </div>
+      </div>
+    </section>
+    <!-- ===== /BLOCO ===== -->
+
+    <!-- VIDA -->
+    <section class="secao vida" aria-labelledby="vida-titulo">
+      <h2 id="vida-titulo">Vida</h2>
+      <div class="box-mini">
+        <label>PV Máximo
+          <input type="number" id="pv-max" data-field="pv-max" value="10" min="1" inputmode="numeric" pattern="[0-9]*" step="1">
+        </label>
+      </div>
+      <div class="box-mini">
+        <label>PV Atual
+          <input type="number" id="pv-atual" data-field="pv-atual" value="10" min="0" inputmode="numeric" pattern="[0-9]*" step="1">
+        </label>
+      </div>
+    </section>
+
+    <!-- DADOS DE VIDA -->
+    <section class="secao dados-vida" aria-labelledby="dv-titulo">
+      <h2 id="dv-titulo">Dados de Vida</h2>
+      <div class="dv-grid">
+        <label>Dado Base
+          <input type="text" id="dv-base" data-field="dv-base" placeholder="d8" readonly>
+        </label>
+        <label>Total (nível)
+          <input type="number" id="dv-total" data-field="dv-total" value="1" min="0" inputmode="numeric" pattern="[0-9]*" step="1">
+        </label>
+        <label>Gastos
+          <input type="number" id="dv-gastos" data-field="dv-gastos" value="0" min="0" inputmode="numeric" pattern="[0-9]*" step="1">
+        </label>
+        <label>Restantes
+          <input type="text" id="dv-restantes" data-field="dv-restantes" value="1" readonly>
+        </label>
+      </div>
+    </section>
+
+    <!-- TESTES CONTRA A MORTE -->
+    <section class="secao mortes" aria-labelledby="mortes-titulo">
+      <h2 id="mortes-titulo">Testes contra a Morte</h2>
+      <fieldset class="morte-col">
+        <legend>Sucessos</legend>
+        <label><input type="checkbox" class="ds sucesso"></label>
+        <label><input type="checkbox" class="ds sucesso"></label>
+        <label><input type="checkbox" class="ds sucesso"></label>
+      </fieldset>
+      <fieldset class="morte-col">
+        <legend>Falhas</legend>
+        <label><input type="checkbox" class="ds falha"></label>
+        <label><input type="checkbox" class="ds falha"></label>
+        <label><input type="checkbox" class="ds falha"></label>
+      </fieldset>
+    </section>
+
+    <!-- ATAQUES E MAGIAS -->
+    <section class="secao ataques-magias" aria-labelledby="atkmagias-titulo">
+      <h2 id="atkmagias-titulo">Ataques e Magias</h2>
+
+      <div class="ataques">
+        <div class="atk-head">
+          <div>Nome</div>
+          <div>Bônus</div>
+          <div>Dano / Tipo</div>
+          <div>Alcance</div>
+          <div>Notas</div>
+        </div>
+        <div class="atk-row">
+          <input type="text" data-field="atk-nome-1" placeholder="Espada longa">
+          <input type="text" data-field="atk-bonus-1" placeholder="+5">
+          <input type="text" data-field="atk-dano-1" placeholder="1d8+3 cortante">
+          <input type="text" data-field="atk-alcance-1" placeholder="1,5m">
+          <input type="text" data-field="atk-notas-1" placeholder="">
+        </div>
+        <div class="atk-row">
+          <input type="text" data-field="atk-nome-2" placeholder="Arco curto">
+          <input type="text" data-field="atk-bonus-2" placeholder="+4">
+          <input type="text" data-field="atk-dano-2" placeholder="1d6+2 perfurante">
+          <input type="text" data-field="atk-alcance-2" placeholder="24/96m">
+          <input type="text" data-field="atk-notas-2" placeholder="">
+        </div>
+        <div class="atk-row">
+          <input type="text" data-field="atk-nome-3" placeholder="Rajada mística">
+          <input type="text" data-field="atk-bonus-3" placeholder="+5">
+          <input type="text" data-field="atk-dano-3" placeholder="1d10 energético">
+          <input type="text" data-field="atk-alcance-3" placeholder="36m">
+          <input type="text" data-field="atk-notas-3" placeholder="">
+        </div>
+      </div>
+
+      <div class="magias">
+        <div class="magias-topo">
+          <label>CD de Magia
+            <input type="number" id="cd-magia" data-field="cd-magia" placeholder="8 + mod + prof" inputmode="numeric" pattern="[0-9]*" step="1">
+          </label>
+          <label>Bônus Ataque Mágico
+            <input type="number" id="bonus-magia" data-field="bonus-magia" placeholder="mod + prof" inputmode="numeric" pattern="[0-9]*" step="1">
+          </label>
+        </div>
+        <label class="magias-label">Magias (lista)
+          <textarea id="lista-magias" data-field="lista-magias" rows="6" placeholder="Anote suas magias preparadas ou conhecidas..."></textarea>
+        </label>
+      </div>
+    </section>
+
+    <!-- CARACTERÍSTICAS E HABILIDADES -->
+    <section class="secao texto-longo" aria-labelledby="carac-titulo">
+      <h2 id="carac-titulo">Características e Habilidades</h2>
+      <textarea id="caracteristicas" data-field="caracteristicas" rows="8" placeholder="Traços de raça, habilidades de classe, talentos..."></textarea>
+    </section>
+
+    <!-- EQUIPAMENTOS -->
+    <section class="secao texto-longo" aria-labelledby="equip-titulo">
+      <h2 id="equip-titulo">Equipamentos</h2>
+      <textarea id="equipamentos" data-field="equipamentos" rows="8" placeholder="Inventário, armas, armaduras, pacotes, etc."></textarea>
+    </section>
+
+    <!-- IDIOMAS E OUTRAS PROFICIÊNCIAS -->
+    <section class="secao texto-longo" aria-labelledby="idiomas-titulo">
+      <h2 id="idiomas-titulo">Idiomas e Outras Proficiências</h2>
+      <textarea id="idiomas-proficiencias" data-field="idiomas-proficiencias" rows="6" placeholder="Idiomas, ferramentas, armas, armaduras..."></textarea>
+    </section>
+  </main>
+  <!-- ========== /FICHA ========== -->
+
+  <!-- ========== Diálogos auxiliares (HTML prontos p/ JS) ========== -->
+  <dialog id="dlg-rename">
+    <form method="dialog" id="dlg-rename-form">
+      <h3>Renomear ficha</h3>
+      <label>
+        Nome
+        <input id="dlg-rename-input" type="text"/>
+      </label>
+      <div class="dialog-actions">
+        <button value="cancel" class="btn ghost">Cancelar</button>
+        <button value="ok" class="btn">Salvar</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="dlg-confirm-delete">
+    <form method="dialog" id="dlg-confirm-delete-form">
+      <h3>Excluir ficha</h3>
+      <p id="dlg-confirm-delete-text">Tem certeza que deseja excluir esta ficha?</p>
+      <div class="dialog-actions"> 
+        <button value="cancel" class="btn ghost">Cancelar</button>
+        <button value="ok" class="btn danger">Excluir</button>
+      </div>
+    </form>
+  </dialog>
+  <!-- ========== /Diálogos ========== -->
+
+  <!-- ========== POINT BUY PANEL ========== -->
+  <div id="pb" class="pb hidden" role="dialog" aria-modal="true" aria-labelledby="pb-title">
+    <div class="pb-card">
+      <header class="pb-header">
+        <h3 id="pb-title">Distribuir Pontos (Point Buy)</h3>
+        <div class="pb-remaining" aria-live="polite">
+          Pontos restantes: <strong id="pb-restantes">27</strong>
+        </div>
+        <div class="pb-tools">
+          <button id="pb-reset" class="btn ghost">Resetar</button>
+          <button id="pb-preset-27" class="btn">Preset clássico</button>
+          <button id="pb-autodist" class="btn primary">Auto-distribuir</button>
+        </div>
+      </header>
+
+      <div class="pb-body">
+        <div class="pb-grid" id="pb-grid">
+          <!-- blocos de atributos gerados via JS -->
+        </div>
+
+        <aside class="pb-side">
+          <div class="pb-table">
+            <div class="pb-table-title">Atributo → Modificador</div>
+            <table>
+              <thead><tr><th>Valor</th><th>Mod</th></tr></thead>
+              <tbody>
+                <tr><td>8</td><td>-1</td></tr>
+                <tr><td>9</td><td>-1</td></tr>
+                <tr><td>10</td><td>0</td></tr>
+                <tr><td>11</td><td>0</td></tr>
+                <tr><td>12</td><td>+1</td></tr>
+                <tr><td>13</td><td>+1</td></tr>
+                <tr><td>14</td><td>+2</td></tr>
+                <tr><td>15</td><td>+2</td></tr>
+                <tr><td>16</td><td>+3</td></tr>
+                <tr><td>17</td><td>+3</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="pb-table">
+            <div class="pb-table-title">Custos (SRD 5e)</div>
+            <table>
+              <thead><tr><th>Valor</th><th>Custo</th></tr></thead>
+              <tbody>
+                <tr><td>8</td><td>0</td></tr>
+                <tr><td>9</td><td>1</td></tr>
+                <tr><td>10</td><td>2</td></tr>
+                <tr><td>11</td><td>3</td></tr>
+                <tr><td>12</td><td>4</td></tr>
+                <tr><td>13</td><td>5</td></tr>
+                <tr><td>14</td><td>7</td></tr>
+                <tr><td>15</td><td>9</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </aside>
+      </div>
+
+      <footer class="pb-footer">
+        <div class="pb-msg" id="pb-msg"></div>
+        <div class="pb-actions">
+          <button id="pb-cancel" class="btn">Cancelar</button>
+          <button id="pb-ok" class="btn primary">Confirmar</button>
+        </div>
+      </footer>
+    </div>
+  </div>
+  <!-- ========== /POINT BUY PANEL ========== -->
+
+  <!-- Toast (autosave) -->
+  <div id="toast" class="toast" role="status" aria-live="polite">Salvo</div>
+</body>
+</html>
